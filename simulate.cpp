@@ -100,11 +100,10 @@ void simulate_online_attack_ecc(int group_id, const char *password, int iteratio
 		rand_bytes(macaddr, 6);
 
 		// Check whether the first iteration finds the group element or not
-		bool found = sae_num_elemtests_ecc_iteration(ec, data.bssid, macaddr, (uint8_t*)password,
+		int rval = sae_num_elemtests_ecc_iteration(ec, data.bssid, macaddr, (uint8_t*)password,
 							    strlen(password), pwd_seed, 1);
 
-		// Return value equal to SAE_EXCEEDS_MAX_LOOPS means the element wasn't found
-		data.add_iteration_result(macaddr, 1, found);
+		data.add_iteration_result(macaddr, 1, rval == 1);
 	}
 }
 

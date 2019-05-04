@@ -108,15 +108,29 @@ int sae_num_elemtests_ffc(const struct dh_group *dh, const uint8_t *addr1,
 }
 
 
+/**
+ * Return values:
+ * -1 if the hash output was larger than the prime
+ *  0 if the hash didn't result in a quadratic residue
+ *  1 if the password element was found
+ */
 static int sae_test_pwd_seed_ecc(const struct ec_group *ec, const uint8_t *pwd_seed,
 				 const uint8_t *prime)
 {
 	uint8_t pwd_value[SAE_MAX_ECC_PRIME_LEN];
-	BIGNUM *y_sqr, *x_cand;
+	static BIGNUM *y_sqr = NULL, *x_cand = NULL;
 	int res;
 	size_t bits;
 
-	//wpa_hexdump_key(MSG_DEBUG, "SAE: pwd-seed", pwd_seed, SHA256_MAC_LEN);
+	/* Allocate this only once */
+	if (y_sqr == NULL) {
+		y_sqr = BN_new();
+		x_cand = BN_new();
+		if (y_sqr == NULL || x_cand == NULL) {
+			fprintf(stderr, "%s: BN_new failed\n", __FUNCTION__);
+			exit(1);
+		}
+	}
 
 	/* pwd-value = KDF-z(pwd-seed, "SAE Hunting and Pecking", p) */
 	bits = BN_num_bits(ec->prime);
@@ -127,36 +141,30 @@ static int sae_test_pwd_seed_ecc(const struct ec_group *ec, const uint8_t *pwd_s
 	//wpa_hexdump_key(MSG_DEBUG, "SAE: pwd-value", pwd_value, ec->prime_len);
 
 	if (memcmp(pwd_value, prime, ec->prime_len) >= 0)
-		return 0;
+		return -1;
 
-	x_cand = BN_bin2bn(pwd_value, ec->prime_len, NULL);
+	x_cand = BN_bin2bn(pwd_value, ec->prime_len, x_cand);
 	if (!x_cand) {
 		fprintf(stderr, "%s: BN_bin2bn failed\n", __FUNCTION__);
 		exit(1);
 	}
 
-	y_sqr = crypto_ec_point_compute_y_sqr(ec, x_cand);
-	if (!y_sqr) {
+	if (crypto_ec_point_compute_y_sqr(ec, x_cand, y_sqr) < 0) {
 		fprintf(stderr, "%s: crypto_ec_point_compute_y_sqr failed\n", __FUNCTION__);
 		exit(1);
 	}
 
-	res = is_quadratic_residue(ec, prime, y_sqr);
-	BN_free(y_sqr);
-	if (res <= 0) {
-		BN_free(x_cand);
-		return res;
-	}
-
-	BN_free(x_cand);
-	return 1;
+	return is_quadratic_residue(ec, prime, y_sqr);
 }
 
 
 /**
- * Returns true if the element was found in this iteration, and false otherwise.
+ * Return values:
+ * -1 if the hash output was larger than the prime
+ *  0 if the hash didn't result in a quadratic residue
+ *  1 if the password element was found
  */
-bool sae_num_elemtests_ecc_iteration(const struct ec_group *ec, const uint8_t *addr1,
+int sae_num_elemtests_ecc_iteration(const struct ec_group *ec, const uint8_t *addr1,
 			   const uint8_t *addr2, const uint8_t *password,
 			   size_t password_len, uint8_t pwd_seed[SHA256_DIGEST_LENGTH],
 			   int iteration)
@@ -171,15 +179,11 @@ bool sae_num_elemtests_ecc_iteration(const struct ec_group *ec, const uint8_t *a
 	BIGNUM *x_cand;
 	int res;
 
+	// TODO: This only needs to be done once
 	prime_len = ec->prime_len;
 	crypto_bignum_to_bin(ec->prime, prime, sizeof(prime), prime_len);
 
-	/*
-	 * H(salt, ikm) = HMAC-SHA256(salt, ikm)
-	 * base = password [|| identifier]
-	 * pwd-seed = H(MAX(STA-A-MAC, STA-B-MAC) || MIN(STA-A-MAC, STA-B-MAC),
-	 *              base || counter)
-	 */
+	// TODO: This stays the same for the same two MAC addresses
 	sae_pwd_seed_key(addr1, addr2, addrs);
 
 	addr[0] = password;
@@ -192,7 +196,7 @@ bool sae_num_elemtests_ecc_iteration(const struct ec_group *ec, const uint8_t *a
 			   addr, len, pwd_seed);
 
 	res = sae_test_pwd_seed_ecc(ec, pwd_seed, prime);
-	return res > 0;
+	return res;
 }
 
 

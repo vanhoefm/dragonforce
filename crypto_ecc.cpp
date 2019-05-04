@@ -109,63 +109,60 @@ struct ec_group * get_ec_group(int group)
 
 int crypto_bignum_legendre(const BIGNUM *a, const BIGNUM *p)
 {
-	BN_CTX *bnctx;
-	BIGNUM *exp = NULL, *tmp = NULL;
+	static BN_CTX *bnctx = NULL;
+	static BIGNUM *exp = NULL, *tmp = NULL;
 	int res = -2;
 
-	bnctx = BN_CTX_new();
+	/* Allocate these things only once to improve efficiency */
 	if (bnctx == NULL) {
-		fprintf(stderr, "%s: BN_CTX_new failed\n", __FUNCTION__);
-		exit(1);
+		bnctx = BN_CTX_new();
+		exp = BN_new();
+		tmp = BN_new();
+		if (bnctx == NULL || exp == NULL || tmp == NULL) {
+			fprintf(stderr, "%s: BN_CTX_new or BN_new failed\n", __FUNCTION__);
+			exit(1);
+		}
 	}
 
-	exp = BN_new();
-	tmp = BN_new();
-	if (!exp || !tmp ||
-	    /* exp = (p-1) / 2 */
-	    !BN_sub(exp, (const BIGNUM *) p, BN_value_one()) ||
+	/* exp = (p-1) / 2 */
+	if (!BN_sub(exp, (const BIGNUM *) p, BN_value_one()) ||
 	    !BN_rshift1(exp, exp) ||
 	    !BN_mod_exp(tmp, (const BIGNUM *) a, exp, (const BIGNUM *) p,
 			bnctx))
-		goto fail;
+		return res;
 
 	if (BN_is_word(tmp, 1))
-		res = 1;
+		return 1;
 	else if (BN_is_zero(tmp))
-		res = 0;
+		return 0;
 	else
-		res = -1;
-
-fail:
-	BN_clear_free(tmp);
-	BN_clear_free(exp);
-	BN_CTX_free(bnctx);
-	return res;
+		return -1;
 }
 
 
-BIGNUM * crypto_ec_point_compute_y_sqr(const struct ec_group *ec, const BIGNUM *x)
+int crypto_ec_point_compute_y_sqr(const struct ec_group *ec, const BIGNUM *x, BIGNUM *y_sqr)
 {
-	BIGNUM *tmp, *tmp2, *y_sqr = NULL;
+	static BIGNUM *tmp = NULL, *tmp2 = NULL;
 
-	tmp = BN_new();
-	tmp2 = BN_new();
-
-	/* y^2 = x^3 + ax + b */
-	if (tmp && tmp2 &&
-	    BN_mod_sqr(tmp, (const BIGNUM *) x, ec->prime, ec->bnctx) &&
-	    BN_mod_mul(tmp, tmp, (const BIGNUM *) x, ec->prime, ec->bnctx) &&
-	    BN_mod_mul(tmp2, ec->a, (const BIGNUM *) x, ec->prime, ec->bnctx) &&
-	    BN_mod_add_quick(tmp2, tmp2, tmp, ec->prime) &&
-	    BN_mod_add_quick(tmp2, tmp2, ec->b, ec->prime)) {
-		y_sqr = tmp2;
-		tmp2 = NULL;
+	/* Allocate these things only once to improve efficiency */
+	if (tmp == NULL) {
+		tmp = BN_new();
+		tmp2 = BN_new();
+		if (tmp == NULL || tmp2 == NULL) {
+			fprintf(stderr, "%s: BN_new failed\n", __FUNCTION__);
+			exit(1);
+		}
 	}
 
-	BN_clear_free(tmp);
-	BN_clear_free(tmp2);
+	/* y^2 = x^3 + ax + b */
+	if (BN_mod_sqr(tmp, (const BIGNUM *) x, ec->prime, ec->bnctx) &&
+	    BN_mod_mul(tmp, tmp, (const BIGNUM *) x, ec->prime, ec->bnctx) &&
+	    BN_mod_mul(y_sqr, ec->a, (const BIGNUM *) x, ec->prime, ec->bnctx) &&
+	    BN_mod_add_quick(y_sqr, y_sqr, tmp, ec->prime) &&
+	    BN_mod_add_quick(y_sqr, y_sqr, ec->b, ec->prime))
+		return 1;
 
-	return (BIGNUM *) y_sqr;
+	return -1;
 }
 
 

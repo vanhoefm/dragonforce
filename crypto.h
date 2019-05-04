@@ -37,7 +37,7 @@ struct ec_group *ec_group_init(int group);
 struct ec_group * get_ec_group(int group);
 
 int crypto_bignum_legendre(const BIGNUM *a, const BIGNUM *p);
-BIGNUM * crypto_ec_point_compute_y_sqr(const struct ec_group *e, const BIGNUM *x);
+int crypto_ec_point_compute_y_sqr(const struct ec_group *e, const BIGNUM *x, BIGNUM *y_sqr);
 int is_quadratic_residue(const struct ec_group *e, const uint8_t *prime, const BIGNUM *y_sqr);
 
 int hmac_vector_sha256(const uint8_t *key, size_t key_len, size_t num_elem,

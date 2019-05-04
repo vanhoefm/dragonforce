@@ -182,7 +182,7 @@ struct crypto_ec_point * crypto_ec_point_init(struct crypto_ec *e)
 }
 
 struct crypto_bignum *
-crypto_ec_point_compute_y_sqr(struct crypto_ec *e,
+hostap_crypto_ec_point_compute_y_sqr(struct crypto_ec *e,
 			      const struct crypto_bignum *x)
 {
 	BIGNUM *tmp, *tmp2, *y_sqr = NULL;
@@ -587,7 +587,7 @@ int sae_test_pwd_seed_ecc_hostap(struct sae_data *sae, const u8 *pwd_seed,
 	x_cand = crypto_bignum_init_set(pwd_value, sae->tmp->prime_len);
 	if (!x_cand)
 		return -1;
-	y_sqr = (struct crypto_bignum *)crypto_ec_point_compute_y_sqr(sae->tmp->ec, (const BIGNUM*)x_cand);
+	y_sqr = (struct crypto_bignum *)hostap_crypto_ec_point_compute_y_sqr(sae->tmp->ec, x_cand);
 	crypto_bignum_deinit(x_cand, 1);
 	if (!y_sqr)
 		return -1;
