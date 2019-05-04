@@ -95,7 +95,7 @@ struct ec_group *ec_group_init(int group)
 
 struct ec_group * get_ec_group(int group)
 {
-	if (group >= 30) {
+	if (group > 30) {
 		fprintf(stderr, "ERROR: %s: unsupported group %d\n", __FUNCTION__, group);
 		return NULL;
 	}

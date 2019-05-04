@@ -2,5 +2,6 @@ CMakeCache.txt
 CMakeFiles/
 Makefile
 bruter
+brainpool
 cmake_install.cmake
 libutil.a

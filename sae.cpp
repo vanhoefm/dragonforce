@@ -15,7 +15,9 @@
 #define ETH_HW_LEN 6
 #define SAE_MAX_PRIME_LEN 512
 
-static void buf_shift_right(uint8_t *buf, size_t len, size_t bits)
+// ======================= Efficient functions for brute-forcing ========================
+
+void buf_shift_right(uint8_t *buf, size_t len, size_t bits)
 {
 	size_t i;
 	for (i = len - 1; i > 0; i--)
@@ -24,7 +26,7 @@ static void buf_shift_right(uint8_t *buf, size_t len, size_t bits)
 }
 
 
-static void sae_pwd_seed_key(const uint8_t *addr1, const uint8_t *addr2, uint8_t *key)
+void sae_pwd_seed_key(const uint8_t *addr1, const uint8_t *addr2, uint8_t *key)
 {
 	if (memcmp(addr1, addr2, ETH_HW_LEN) > 0) {
 		memcpy(key, addr1, ETH_HW_LEN);
@@ -52,62 +54,11 @@ static int sae_test_pwd_seed_ffc(const struct dh_group *dh, const uint8_t *pwd_s
 	if (memcmp(pwd_value, dh->prime, dh->prime_len) >= 0)
 		return 0;
 
-	// TODO: The exponentiation practically always results in P > 1 (??)
+	// TODO: The exponentiation practically always results in P > 1 (??).
+	//       So need to execute and verify it!
 
 	return 1;
-
-#if 0
-	uint8_t exp[1];
-	BIGNUM *a, *b;
-	int res;
-
-	/* PWE = pwd-value^((p-1)/r) modulo p */
-
-	a = crypto_bignum_init_set(pwd_value, sae->tmp->prime_len);
-
-	if (sae->tmp->dh->safe_prime) {
-		/*
-		 * r = (p-1)/2 for the group used here, so this becomes:
-		 * PWE = pwd-value^2 modulo p
-		 */
-		exp[0] = 2;
-		b = crypto_bignum_init_set(exp, sizeof(exp));
-	} else {
-		/* Calculate exponent: (p-1)/r */
-		exp[0] = 1;
-		b = crypto_bignum_init_set(exp, sizeof(exp));
-		if (b == NULL ||
-		    crypto_bignum_sub(sae->tmp->prime, b, b) < 0 ||
-		    crypto_bignum_div(b, sae->tmp->order, b) < 0) {
-			crypto_bignum_deinit(b, 0);
-			b = NULL;
-		}
-	}
-
-	if (a == NULL || b == NULL)
-		res = -1;
-	else
-		res = crypto_bignum_exptmod(a, b, sae->tmp->prime, pwe);
-
-	crypto_bignum_deinit(a, 0);
-	crypto_bignum_deinit(b, 0);
-
-	if (res < 0) {
-		wpa_printf(MSG_DEBUG, "SAE: Failed to calculate PWE");
-		return -1;
-	}
-
-	/* if (PWE > 1) --> found */
-	if (crypto_bignum_is_zero(pwe) || crypto_bignum_is_one(pwe)) {
-		wpa_printf(MSG_DEBUG, "SAE: PWE <= 1");
-		return 0;
-	}
-
-	wpa_printf(MSG_DEBUG, "SAE: PWE found");
-	return 1;
-#endif
 }
-
 
 bool sae_num_elemtests_ffc_iteration(const struct dh_group *dh, const uint8_t *addr1,
 				 const uint8_t *addr2, const uint8_t *password,
@@ -243,7 +194,6 @@ bool sae_num_elemtests_ecc_iteration(const struct ec_group *ec, const uint8_t *a
 	res = sae_test_pwd_seed_ecc(ec, pwd_seed, prime);
 	return res > 0;
 }
-
 
 
 int test_ecc()
