@@ -1,6 +1,8 @@
 #ifndef bruter_sae_h
 #define bruter_sae_h
 
+#include <openssl/sha.h>
+
 #include "crypto.h"
 
 #define SAE_EXCEEDS_MAX_LOOPS	1
