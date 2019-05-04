@@ -18,6 +18,7 @@
 #include "crypto.h"
 #include "sae.h"
 #include "partitioning.h"
+#include "passwordlist.h"
 
 void read_passwords(const char *filename, std::list<std::string> &passwords)
 {
@@ -100,6 +101,18 @@ void benchmark_micro(int group_id)
 	printf("%lld nanoseconds\n", accum);
 }
 
+
+// ========================================== Brainpool Timing Attacks ==========================================
+
+// 1. Read the relationships from a file. Previously we only simulated this. Should we simulate again?
+// 2. [DONE!] Read all the passwords from a file. Create a class for this, which can decide to read all at once or in chunks or one by one.
+// 3. Simulate the MAC addresses one by one, and for each one compare the relationships we can now check with the one we measured.
+
+// We need:
+// - Function to extract when ECC was found, and how many hashchecks failed.
+// - For every single iteration, we can already filter the variance relationships. But is this worth the performance increase?
+//   We should just check a single MAC address. Then estimate performance based on MAC addresses that we have. We can run a
+//   more performant Legendre test, no need for blinding, don't even need constant time Legendre computation.
 
 // ========================================== Main function ==========================================
 
@@ -191,10 +204,13 @@ int main(int argc, char *argv[])
 		int group_id = 22;
 		char outfile[256];
 
-		if (opt.dictionary_file)
+		if (opt.dictionary_file) {
 			read_passwords(opt.dictionary_file, passwords);
-		else
+			//passwords = PasswordFile(opt.dictionary_file);
+		} else {
 			simulate_dictionary(opt.dictionary_size, passwords);
+			//passwords = PasswordGenerator(opt.dictionary_size);
+		}
 
 		printf("Simulating group %d\n", opt.group_id);
 		printf("Using a dictionary of size %d\n", passwords.size());
