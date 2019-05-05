@@ -218,7 +218,9 @@ int main(int argc, char *argv[])
 		simulate_brainpool_timings(opt.group_id);
 	} else {
 		int time_bighash = benchmark_brainpool_timings(opt.group_id, 1, opt.iterations);
+		if (time_bighash < 0) return 1;
 		int time_qrtest = benchmark_brainpool_timings(opt.group_id, 0, opt.iterations);
+		if (time_qrtest < 0) return 1;
 		printf("Ratio: %lf\n", (double)time_qrtest / time_bighash);
 	}
 

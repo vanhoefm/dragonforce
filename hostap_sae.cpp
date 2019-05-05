@@ -31,6 +31,10 @@ struct sae_data * sae_data_init(int group_id)
 	memset(sae->tmp, 0, sizeof(struct sae_temporary_data));
 
 	sae->tmp->ec = get_ec_group(group_id);
+	if (sae->tmp->ec == NULL) {
+		fprintf(stderr, "%s: failed to initialize group %d\n", __FUNCTION__, group_id);
+		return NULL;
+	}
 	sae->tmp->prime_len = crypto_ec_prime_len(sae->tmp->ec);
 	sae->tmp->prime = (const crypto_bignum*)sae->tmp->ec->prime;
 	sae->tmp->pwe_ecc = NULL;
