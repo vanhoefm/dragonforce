@@ -47,4 +47,9 @@ int sha256_prf_bits(const uint8_t *key, size_t key_len, const char *label,
 		    size_t buf_len_bits);
 int crypto_bignum_to_bin(const BIGNUM *a, uint8_t *buf, size_t buflen, size_t padlen);
 
+#if (OPENSSL_VERSION_NUMBER < 0x10100000L) || defined (LIBRESSL_VERSION_NUMBER)
+#define EVP_MD_CTX_new EVP_MD_CTX_create
+#define EVP_MD_CTX_free EVP_MD_CTX_destroy
+#endif
+
 #endif // crypto_h
