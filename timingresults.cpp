@@ -81,25 +81,28 @@ public:
 	PwFilterAverage(MacAddrSimulation *macaddr_slower, MacAddrSimulation *macaddr_faster, int group)
 		: macaddr_faster(macaddr_faster), macaddr_slower(macaddr_slower)
 	{
-		// TODO: Perform timing on more CPUs to check how much they vary in practice.
-		// These were taken on an Intel(R) Core(TM) i7-8650U CPU @ 1.90GHz.
+		// TODO: Calculate minimum and maximum bounds, and use those bounds when
+		// filtering results. That way we are independent of the target being attack.
 		switch (group) {
 		case 28:
 			pr_toobig = 0.3360;
-			time_bighash = 8352;
-			time_qrtest = 145439;
+			// Ratio of 17.41 on work laptop, 16.74 on personal laptop, 23.21 on raspberry 1
+			time_bighash = 4473;
+			time_qrtest = 103812;
 			break;
 
 		case 29:
 			pr_toobig = 0.4503;
-			time_bighash = 16354;
-			time_qrtest = 264538;
+			// Ratio of 16.17 on work laptop, 15.84 on personal laptop, 25.23 on raspberry 1
+			time_bighash = 8462;
+			time_qrtest = 213493;
 			break;
 
 		case 30:
 			pr_toobig = 0.3326;
-			time_bighash = 19028;
-			time_qrtest = 272755;
+			// Ratio of 14.33 on work laptop, 18.99 on personal laptop, 46.33 on raspberry 1
+			time_bighash = 8602;
+			time_qrtest = 398505;
 			break;
 
 		default:
