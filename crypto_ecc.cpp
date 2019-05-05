@@ -8,7 +8,7 @@
 
 #include "crypto.h"
 
-static struct ec_group *ec_group_cache[30];
+static struct ec_group *ec_group_cache[256];
 
 void ec_group_deinit(struct ec_group *ec)
 {
@@ -82,6 +82,7 @@ struct ec_group *ec_group_init(int group)
 	    ec->order == NULL || ec->a == NULL || ec->b == NULL ||
 	    !EC_GROUP_get_curve_GFp(ec->group, ec->prime, ec->a, ec->b, ec->bnctx) ||
 	    !EC_GROUP_get_order(ec->group, ec->order, ec->bnctx)) {
+		fprintf(stderr, "Error in %s\n", __FUNCTION__);
 		ec_group_deinit(ec);
 		ec = NULL;
 	}

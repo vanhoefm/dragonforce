@@ -200,6 +200,53 @@ int sae_num_elemtests_ecc_iteration(const struct ec_group *ec, const uint8_t *ad
 }
 
 
+int sae_num_elemtests_ecc(const struct ec_group *ec, const uint8_t *addr1,
+			   const uint8_t *addr2, const uint8_t *password,
+			   size_t password_len, uint8_t pwd_seed[SHA256_DIGEST_LENGTH],
+			   int *num_hashtoobig)
+{
+	uint8_t counter = 0;
+	uint8_t addrs[2 * ETH_HW_LEN];
+	const uint8_t *addr[2];
+	size_t len[2];
+	size_t num_elem;
+	uint8_t prime[SAE_MAX_ECC_PRIME_LEN];
+	size_t prime_len;
+	BIGNUM *x_cand;
+	int res;
+	int hashtoobig = 0;
+
+	prime_len = ec->prime_len;
+	crypto_bignum_to_bin(ec->prime, prime, sizeof(prime), prime_len);
+
+	sae_pwd_seed_key(addr1, addr2, addrs);
+
+	addr[0] = password;
+	len[0] = password_len;
+	addr[1] = &counter;
+	len[1] = sizeof(counter);
+	num_elem = 2;
+
+	do {
+		counter++;
+		hmac_vector_sha256(addrs, sizeof(addrs), num_elem,
+			   addr, len, pwd_seed);
+
+		res = sae_test_pwd_seed_ecc(ec, pwd_seed, prime);
+		//printf("%s: counter %d => %d\n", __FUNCTION__, counter, res);
+		if (res == -1)
+			hashtoobig++;
+	} while (res != 1);
+
+	if (num_hashtoobig != NULL)
+		*num_hashtoobig = hashtoobig;
+
+	// We return the number of iterations that were required. These iterations
+	// will always have the same running time, since they are based on the real
+	// password, and not a randomly generated one.
+	return counter;
+}
+
 int test_ecc()
 {
 	// Perform some unit tests on MAC addresses to see if we get the correct x-coordinate

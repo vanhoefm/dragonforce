@@ -12,6 +12,10 @@ int sae_num_elemtests_ecc_iteration(const struct ec_group *ec, const uint8_t *ad
 			   const uint8_t *addr2, const uint8_t *password,
 			   size_t password_len, uint8_t pwd_seed[SHA256_DIGEST_LENGTH],
 			   int iteration);
+int sae_num_elemtests_ecc(const struct ec_group *ec, const uint8_t *addr1,
+			   const uint8_t *addr2, const uint8_t *password,
+			   size_t password_len, uint8_t pwd_seed[SHA256_DIGEST_LENGTH],
+			   int *num_hashtoobig);
 
 
 int sae_num_elemtests_ffc(const struct dh_group *dh, const uint8_t *addr1,

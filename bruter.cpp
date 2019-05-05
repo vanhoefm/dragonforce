@@ -11,6 +11,8 @@
 #include <openssl/bn.h>
 #include <openssl/sha.h>
 
+#include <stdexcept>
+#include <iostream>
 #include <list>
 #include <string>
 #include <algorithm>
@@ -19,6 +21,7 @@
 #include "sae.h"
 #include "partitioning.h"
 #include "passwordlist.h"
+#include "timingresults.h"
 
 void read_passwords(const char *filename, std::list<std::string> &passwords)
 {
@@ -122,6 +125,7 @@ struct options {
 	int smart;
 	const char *dictionary_file;
 	int dictionary_size;
+	const char *signature;
 } opt;
 
 int main(int argc, char *argv[])
@@ -135,6 +139,7 @@ int main(int argc, char *argv[])
 	{
 		static struct option long_options[] =
 		{
+			{"signature", required_argument, 0, 'i'},
 			{"micro", no_argument, 0, 'm'},
 			{"smart", no_argument, 0, 's'},
 			{"group", required_argument, 0, 'g'},
@@ -153,6 +158,10 @@ int main(int argc, char *argv[])
 
 		switch (c)
 		{
+		case 'i':
+			opt.signature = optarg;
+			break;
+
 		case 'm':
 			opt.micro = 1;
 			break;
@@ -185,6 +194,9 @@ int main(int argc, char *argv[])
 	} else if (opt.dictionary_file != NULL && opt.dictionary_size > 0) {
 		printf("Cannot use --dictionary and --dictionary-size at the same time\n");
 		return 1;
+	} else if (opt.signature && (opt.smart || opt.micro || opt.group_id)) {
+		printf("Connot combine --signature with either --smart, --micro, or --group\n");
+		return 1;
 	}
 
 	// Set default arguments
@@ -193,7 +205,25 @@ int main(int argc, char *argv[])
 	if (opt.dictionary_file == NULL && opt.dictionary_size == 0)
 		opt.dictionary_size = 1000;
 
-	if (opt.micro)
+	if (opt.signature)
+	{
+		PasswordSignature *signature = new PasswordSignature(opt.signature);
+		PasswordList *passwords = NULL;
+
+		try {
+			if (opt.dictionary_file)
+				passwords = new PasswordFile(opt.dictionary_file);
+			else
+				passwords = new PasswordGenerator(opt.dictionary_size);
+		} catch (std::exception &ex) {
+			std::cout << ex.what() << "\n";
+			exit(1);
+		}
+
+		int num_remaining = signature->bruteforce(passwords);
+		printf("Remaining passwords: %d\n", num_remaining);
+	}
+	else if (opt.micro)
 	{
 		benchmark_micro(opt.group_id);
 	}

@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdexcept>
 
 #include "passwordlist.h"
 
@@ -7,11 +8,14 @@ PasswordFile::PasswordFile(const char *filename)
 	FILE *fp = fopen(filename, "r");
 	char line[256];
 
+	if (fp == NULL)
+		throw std::runtime_error("Could not open signature file");
+
 	while (fgets(line, sizeof(line), fp) != NULL) {
 		int len = strlen(line);
 		if (line[len - 1] == '\n')
 			len--;
-		passwords.push_front(std::string(line, len));
+		passwords.push_back(std::string(line, len));
 	}
 
 	printf("Read %d passwords from %s\n", passwords.size(), filename);

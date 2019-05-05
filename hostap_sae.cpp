@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
 
 #include <openssl/sha.h>
 #include <openssl/rand.h>
@@ -26,10 +27,10 @@ struct sae_data * sae_data_init(int group_id)
 	struct sae_data *sae = (struct sae_data *)malloc(sizeof(struct sae_data));
 	memset(sae, 0, sizeof(*sae));
 
-	sae->tmp = (struct sae_temporary_data*)malloc(sizeof(*sae->tmp));
-	memset(sae->tmp, 0, sizeof(*sae->tmp));
+	sae->tmp = (struct sae_temporary_data*)malloc(sizeof(struct sae_temporary_data));
+	memset(sae->tmp, 0, sizeof(struct sae_temporary_data));
 
-	sae->tmp->ec = get_ec_group(group_id);;
+	sae->tmp->ec = get_ec_group(group_id);
 	sae->tmp->prime_len = crypto_ec_prime_len(sae->tmp->ec);
 	sae->tmp->prime = (const crypto_bignum*)sae->tmp->ec->prime;
 	sae->tmp->pwe_ecc = NULL;
@@ -54,23 +55,19 @@ static int openssl_digest_vector(const EVP_MD *type, size_t num_elem,
 	if (!ctx)
 		return -1;
 	if (!EVP_DigestInit_ex(ctx, type, NULL)) {
-		//wpa_printf(MSG_ERROR, "OpenSSL: EVP_DigestInit_ex failed: %s",
-		//	   ERR_error_string(ERR_get_error(), NULL));
+		fprintf(stderr, "OpenSSL: EVP_DigestInit_ex failed\n");
 		EVP_MD_CTX_free(ctx);
 		return -1;
 	}
 	for (i = 0; i < num_elem; i++) {
 		if (!EVP_DigestUpdate(ctx, addr[i], len[i])) {
-			//wpa_printf(MSG_ERROR, "OpenSSL: EVP_DigestUpdate "
-			//	   "failed: %s",
-			//	   ERR_error_string(ERR_get_error(), NULL));
+			fprintf(stderr, "OpenSSL: EVP_DigestUpdate failed\n");
 			EVP_MD_CTX_free(ctx);
 			return -1;
 		}
 	}
 	if (!EVP_DigestFinal(ctx, mac, &mac_len)) {
-		//wpa_printf(MSG_ERROR, "OpenSSL: EVP_DigestFinal failed: %s",
-		//	   ERR_error_string(ERR_get_error(), NULL));
+		fprintf(stderr, "OpenSSL: EVP_DigestFinal failed\n");
 		EVP_MD_CTX_free(ctx);
 		return -1;
 	}
