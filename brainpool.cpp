@@ -59,7 +59,7 @@ static void simulate_brainpool_timings(int group_id)
  * type: 1 to measure time when hash output >= prime
  * type: 0 to measure time when hash output < prime
  */
-static void benchmark_brainpool_timings(int group_id, int type, int num_tests)
+static int benchmark_brainpool_timings(int group_id, int type, int num_tests)
 {
 	struct sae_data *sae = NULL;
 	uint8_t macaddr1[6] = {0x00, 0x10, 0x20, 0x30, 0x40, 0x50};
@@ -78,18 +78,18 @@ static void benchmark_brainpool_timings(int group_id, int type, int num_tests)
 	sae = sae_data_init(group_id);
 	if (sae == NULL) {
 		printf("ERROR in %s: sae_data_init\n", __FUNCTION__);
-		return;
+		return -1;
 	}
 	if (crypto_bignum_to_bin((const BIGNUM*)sae->tmp->prime, prime, sizeof(prime),
 				 sae->tmp->prime_len) < 0) {
 		printf("ERROR in %s: crypto_bignum_to_bin\n", __FUNCTION__);
-		return;
+		return -1;
 	}
 	if (dragonfly_get_random_qr_qnr(sae->tmp->prime, &qr, &qnr) < 0 ||
 	    crypto_bignum_to_bin((const BIGNUM*)qr, qr_bin, sizeof(qr_bin), sae->tmp->prime_len) < 0 ||
 	    crypto_bignum_to_bin((const BIGNUM*)qnr, qnr_bin, sizeof(qnr_bin), sae->tmp->prime_len) < 0) {
 		printf("ERROR in %s: dragonfly_get_random_qr_qnr\n", __FUNCTION__);
-		return;
+		return -1;
 	}
 
 	// Find data where the hash output is bigger than the prime
@@ -115,6 +115,8 @@ static void benchmark_brainpool_timings(int group_id, int type, int num_tests)
 		printf("Elapsed time for %d hash >= prime: %d ms\n", num_tests, elapsed_milliseconds);
 	else
 		printf("Elapsed time for %d hash < prime : %d ms\n", num_tests, elapsed_milliseconds);
+
+	return elapsed_milliseconds;
 }
 
 
@@ -215,8 +217,9 @@ int main(int argc, char *argv[])
 	if (opt.simulate) {
 		simulate_brainpool_timings(opt.group_id);
 	} else {
-		benchmark_brainpool_timings(opt.group_id, 1, opt.iterations);
-		benchmark_brainpool_timings(opt.group_id, 0, opt.iterations);
+		int time_bighash = benchmark_brainpool_timings(opt.group_id, 1, opt.iterations);
+		int time_qrtest = benchmark_brainpool_timings(opt.group_id, 0, opt.iterations);
+		printf("Ratio: %lf\n", (double)time_qrtest / time_bighash);
 	}
 
 	// This one was mainly for debugging
