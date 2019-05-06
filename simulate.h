@@ -50,4 +50,6 @@ public:
 void simulate_dictionary(int size, std::list<std::string> &passwords);
 void simulate_online_attack(int group_id, const char *password, int iterations, IterationData &data);
 
+void simulate_online_attack_ecc_pwfilter(int group_id, const char *password, int iterations, const char *filename);
+
 #endif // bruter_simulate_h

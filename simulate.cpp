@@ -117,3 +117,49 @@ void simulate_online_attack(int group_id, const char *password, int iterations, 
 		simulate_online_attack_ecc(group_id, password, iterations, data);
 }
 
+
+// ----------------------------------------------------------------------------
+
+/**
+ * This corresponds to the cache-based attack that determines the result of the first iteration.
+ */
+void simulate_online_attack_ecc_pwfilter(int group_id, const char *password, int iterations, const char *filename)
+{
+	const struct ec_group *ec = get_ec_group(group_id);
+	uint8_t pwd_seed[SHA256_DIGEST_LENGTH];
+	int total_iterations = 0;
+	uint8_t bssid[6];
+
+	// Generate random AP address
+	rand_bytes(bssid, 6);
+
+	FILE *fp = fopen(filename, "w");
+	if (fp == NULL) {
+		fprintf(stderr, "Failed to open %s for writing: ", filename);
+		perror("");
+		return;
+	}
+
+	fprintf(fp, "BSSID %02X:%02X:%02X:%02X:%02X:%02X\n", bssid[0], bssid[1],
+		bssid[2], bssid[3], bssid[4], bssid[5]);
+	fprintf(fp, "Group %d\n", group_id);
+
+	for (int i = 0; i < iterations; ++i)
+	{
+		// Generate random client MAC address
+		unsigned char macaddr[6];
+		rand_bytes(macaddr, 6);
+
+		// Check whether the first iteration finds the group element or not
+		int rval = sae_num_elemtests_ecc_iteration(ec, bssid, macaddr, (uint8_t*)password,
+							    strlen(password), pwd_seed, 1);
+		bool found = rval == 1;
+
+		fprintf(fp, "ElementTest %02X:%02X:%02X:%02X:%02X:%02X %d %d\n", macaddr[0],
+			macaddr[1], macaddr[2], macaddr[3], macaddr[4], macaddr[5], 1, found);
+	}
+
+	fclose(fp);
+}
+
+

@@ -7,6 +7,8 @@
 
 #include "passwordlist.h"
 
+#define MAX_FILTERS 100
+
 class PasswordSignature;
 class MacAddrSimulation;
 class PwFilter;
@@ -20,12 +22,14 @@ public:
 
 	// Current password being checked
 	const char *password;
+	int password_id;
 	uint8_t pwd_seed[512];
 
 private:
 	// Only used during parsing
 	std::map<std::string, MacAddrSimulation*> macaddr_map;
-	std::vector<PwFilter*> filters;
+	PwFilter *filters[MAX_FILTERS];
+	int num_filters;
 
 	bool parse_macaddr(const char *charaddr, uint8_t *macaddr);
 	MacAddrSimulation * lookup_macaddr(const char *charaddr);
