@@ -156,9 +156,10 @@ public:
 	}
 };
 
-double PwFilterAverage::factors28[] = { 17.41, 16.74, 23.21 }; // Ratio on work laptop
-double PwFilterAverage::factors29[] = { 16.17, 15.84, 25.23 }; // Ratio on personal laptop
-double PwFilterAverage::factors30[] = { 14.33, 18.99, 46.33 }; // Ratio on raspberry pi
+// Ratio on work laptop, personal laptop, and raspberry pi
+double PwFilterAverage::factors28[] = { 17.41, 16.74, 23.21 };
+double PwFilterAverage::factors29[] = { 16.17, 15.84, 25.23 };
+double PwFilterAverage::factors30[] = { 14.33, 18.99, 46.33 };
 
 
 void MacAddrSimulation::simulate_derivation()
