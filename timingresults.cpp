@@ -29,7 +29,7 @@ public:
 
 	// This function does not cache the result. It was made to be used in
 	// PwFilterElemenTest, where for each MAC address it is only called once
-	bool found_in_iteration(int iteration);
+	int found_in_iteration(int iteration);
 };
 
 
@@ -46,20 +46,30 @@ class PwFilterElementTest : public PwFilter
 private:
 	MacAddrSimulation *macaddr;
 	int iteration;
+	bool hashtest;
 	bool found;
 	bool used;
 
 public:
-	PwFilterElementTest(MacAddrSimulation *macaddr, int iteration, bool found)
-		: macaddr(macaddr), iteration(iteration), found(found), used(false)
+	PwFilterElementTest(MacAddrSimulation *macaddr, int iteration, bool hashtest, bool found)
+		: macaddr(macaddr), iteration(iteration), hashtest(hashtest), found(found), used(false)
 	{ }
 
 	virtual bool is_password_possible()
 	{
+		// TODO: Only perform hash when `hashtest` is true
+		int rval = macaddr->found_in_iteration(iteration);
+		bool wasfound = false;
+		if (hashtest)
+			wasfound = rval >= 0;
+		else
+			wasfound = rval == 1;
+
 		// We only expect to use this filter once per MAC address,
 		// so just calculate the result on the spot.
 		used = true;
-		return found == macaddr->found_in_iteration(iteration);
+
+		return found == wasfound;
 	}
 
 	virtual bool was_used() const
@@ -232,7 +242,7 @@ int MacAddrSimulation::get_hashes_toobig()
 	return num_hashes_toobig;
 }
 
-bool MacAddrSimulation::found_in_iteration(int iteration)
+int MacAddrSimulation::found_in_iteration(int iteration)
 {
 	int rval = context->sae_num_elemtests_any_iteration(context->bssid,
 				this->macaddr, (const uint8_t*)context->password, strlen(context->password),
@@ -241,7 +251,8 @@ bool MacAddrSimulation::found_in_iteration(int iteration)
 	if (rval == -1)
 		context->num_simulated_elemtests_hashtoobig++;
 	// FIXME: Replace with rval >= 0 to test Brainpool cache attack
-	return rval == 1;
+	//return rval == 1;
+	return rval;
 }
 
 bool PasswordSignature::init_group(int groupid)
@@ -375,7 +386,7 @@ int PasswordSignature::read_password_signature(const char *filename)
 			int iteration = atoi(optarg2);
 			int found = atoi(optarg3) != 0;
 
-			filters[num_filters] = new PwFilterElementTest(addr, iteration, found);
+			filters[num_filters] = new PwFilterElementTest(addr, iteration, this->group >= 27 && this->group <= 30, found);
 			num_filters++;
 		}
 		else
@@ -465,7 +476,7 @@ void PasswordSignature::simulate_signatures(int num_elemtests, int groupid)
 		MacAddrSimulation *addr = lookup_macaddr(macaddr);
 		int iteration = 1;
 
-		filters[num_filters] = new PwFilterElementTest(addr, iteration, found);
+		filters[num_filters] = new PwFilterElementTest(addr, iteration, this->group >= 27 && this->group <= 30, found);
 		num_filters++;
 	}
 

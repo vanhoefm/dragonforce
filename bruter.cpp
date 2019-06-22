@@ -150,7 +150,7 @@ void simulate_avg_simulated_elemtest()
 {
 	// Number of element tests needed on average to filter all d passwords
 	int n = 100;
-	int groupid = 22;
+	int groupid = 28;
 	int num_simulated_elemtests = 0;
 
 	for (int i = 0; i < 100; ++i)
