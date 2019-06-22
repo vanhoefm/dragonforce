@@ -19,7 +19,6 @@
 
 #include "crypto.h"
 #include "sae.h"
-#include "partitioning.h"
 #include "passwordlist.h"
 #include "timingresults.h"
 
@@ -107,6 +106,68 @@ void benchmark_micro(int group_id)
 
 // ========================================== Brainpool Timing Attacks ==========================================
 
+void simulate_filter_pr()
+{
+	// Probability of filtering 10**3 passwords using n element tests.
+	// This uses simulated element tests, and we do 10**5 runs per n.
+	int n = 10;
+	int groupid = 19;
+
+	int num_all_pruned = 0;
+	for (int i = 0; i < 10000; ++i)
+	{
+		PasswordSignature *signature = new PasswordSignature(n, groupid);
+		PasswordList *passwords = new PasswordGenerator(1000);
+		int num_remaining = signature->bruteforce(passwords);
+		printf("Remaining passwords: %d\n", num_remaining);
+
+		if (num_remaining == 0) num_all_pruned++;
+	}
+
+	printf("Percentage filtered: %d/%d\n", num_all_pruned, 10000);
+}
+
+void simulate_avg_required_elemtest()
+{
+	// Number of element tests needed on average to filter all d passwords
+	int n = 100;
+	int groupid = 19;
+	int total_elemtest_used = 0;
+	for (int i = 0; i < 1000; ++i)
+	{
+		PasswordSignature *signature = new PasswordSignature(n, groupid);
+		PasswordList *passwords = new PasswordGenerator(10000);
+		int num_remaining = signature->bruteforce(passwords);
+		assert(num_remaining == 0);
+
+		total_elemtest_used += signature->num_used_elemtests();
+	}
+
+	printf("Element tests used: %d/%d\n", total_elemtest_used, 1000);
+}
+
+void simulate_avg_simulated_elemtest()
+{
+	// Number of element tests needed on average to filter all d passwords
+	int n = 100;
+	int groupid = 22;
+	int num_simulated_elemtests = 0;
+
+	for (int i = 0; i < 100; ++i)
+	{
+		PasswordSignature *signature = new PasswordSignature(n, groupid);
+		PasswordList *passwords = new PasswordGenerator(1000);
+		int num_remaining = signature->bruteforce(passwords);
+		assert(num_remaining == 0);
+
+		num_simulated_elemtests += signature->num_simulated_elemtests;
+	}
+
+	printf("Number of simulated element tests: %d/%d\n", num_simulated_elemtests / 100, 1000);
+}
+
+// ========================================== Brainpool Timing Attacks ==========================================
+
 // 1. Read the relationships from a file. Previously we only simulated this. Should we simulate again?
 // 2. [DONE!] Read all the passwords from a file. Create a class for this, which can decide to read all at once or in chunks or one by one.
 // 3. Simulate the MAC addresses one by one, and for each one compare the relationships we can now check with the one we measured.
@@ -122,10 +183,10 @@ void benchmark_micro(int group_id)
 struct options {
 	int group_id;
 	int micro;
-	int smart;
 	const char *dictionary_file;
 	int dictionary_size;
 	const char *signature;
+	int simulate;
 } opt;
 
 int main(int argc, char *argv[])
@@ -141,20 +202,22 @@ int main(int argc, char *argv[])
 		{
 			{"signature", required_argument, 0, 'i'},
 			{"micro", no_argument, 0, 'm'},
-			{"smart", no_argument, 0, 's'},
 			{"group", required_argument, 0, 'g'},
 			{"dictionary", required_argument, 0, 'f'},
 			{"dictionary-size", required_argument, 0, 'd'},
+			{"simulate", required_argument, 0, 's'},
 			{0, 0, 0, 0}
 		};
 		/* getopt_long stores the option index here. */
 		int option_index = 0;
 
-		c = getopt_long(argc, argv, "msf:d:g:", long_options, &option_index);
+		c = getopt_long(argc, argv, "mf:d:g:i:", long_options, &option_index);
 
 		/* Detect the end of the options. */
 		if (c == -1)
 			break;
+		else if (c == '?' || c == ':')
+			return -1;
 
 		switch (c)
 		{
@@ -164,10 +227,6 @@ int main(int argc, char *argv[])
 
 		case 'm':
 			opt.micro = 1;
-			break;
-
-		case 's':
-			opt.smart = 1;
 			break;
 
 		case 'f':
@@ -182,20 +241,24 @@ int main(int argc, char *argv[])
 			opt.group_id = atoi(optarg);
 			break;
 
+		case 's':
+			opt.simulate = atoi(optarg);
+			break;
+
 		default:
 			abort();
 		}
 	}
 
 	// Check conflicting arguments
-	if (opt.micro && opt.smart) {
-		printf("Cannot use --micro and --smart flags at the same time\n");
-		return 1;
-	} else if (opt.dictionary_file != NULL && opt.dictionary_size > 0) {
+	if (opt.dictionary_file != NULL && opt.dictionary_size > 0) {
 		printf("Cannot use --dictionary and --dictionary-size at the same time\n");
 		return 1;
-	} else if (opt.signature && (opt.smart || opt.micro || opt.group_id)) {
-		printf("Connot combine --signature with either --smart, --micro, or --group\n");
+	} else if (opt.signature && (opt.micro || opt.group_id)) {
+		printf("Connot combine --signature with either --micro or --group\n");
+		return 1;
+	} else if (!opt.signature && !opt.micro && !opt.simulate) {
+		printf("Must specify either --signature, --micro, or --simulate\n");
 		return 1;
 	}
 
@@ -205,7 +268,25 @@ int main(int argc, char *argv[])
 	if (opt.dictionary_file == NULL && opt.dictionary_size == 0)
 		opt.dictionary_size = 1000;
 
-	if (opt.signature)
+	if (opt.simulate)
+	{
+		switch (opt.simulate)
+		{
+		case 1:
+			simulate_filter_pr();
+			break;
+
+		case 2:
+			simulate_avg_required_elemtest();
+			break;
+
+		case 3:
+			simulate_avg_simulated_elemtest();
+			break;
+		}
+
+	}
+	else if (opt.signature)
 	{
 		PasswordSignature *signature = new PasswordSignature(opt.signature);
 		PasswordList *passwords = NULL;
@@ -226,26 +307,6 @@ int main(int argc, char *argv[])
 	else if (opt.micro)
 	{
 		benchmark_micro(opt.group_id);
-	}
-	else
-	{
-		// Based on the options, load/generate a dictionary of passwords
-		std::list<std::string> passwords;
-		int group_id = 22;
-		char outfile[256];
-
-		if (opt.dictionary_file) {
-			read_passwords(opt.dictionary_file, passwords);
-			//passwords = PasswordFile(opt.dictionary_file);
-		} else {
-			simulate_dictionary(opt.dictionary_size, passwords);
-			//passwords = PasswordGenerator(opt.dictionary_size);
-		}
-
-		printf("Simulating group %d\n", opt.group_id);
-		printf("Using a dictionary of size %d\n", passwords.size());
-		sprintf(outfile, "simulation_results_%d.py", time(NULL));
-		SimulationResults results = simulate_partition_attack(outfile, passwords, opt.group_id);
 	}
 
 	return 0;

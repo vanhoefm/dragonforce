@@ -26,6 +26,12 @@ bool sae_num_elemtests_ffc_iteration(const struct dh_group *dh, const uint8_t *a
 				 size_t password_len, int iteration);
 
 
+int sae_num_elemtests_any_iteration(void *group, const uint8_t *addr1,
+			   const uint8_t *addr2, const uint8_t *password,
+			   size_t password_len, uint8_t pwd_seed[SHA256_DIGEST_LENGTH],
+			   int iteration);
+
+
 int test_ecc();
 
 #endif // bruter_sae_h

