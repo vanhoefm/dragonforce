@@ -520,6 +520,9 @@ int PasswordSignature::bruteforce(PasswordList *passwords)
 		pw = passwords->next();
 	}
 
+	printf("Used %d hash tests and %d quadratic tests\n",
+		num_simulated_elemtests, num_simulated_elemtests - num_simulated_elemtests_hashtoobig);
+
 	return num_possible;
 }
 
